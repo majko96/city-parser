@@ -1,0 +1,71 @@
+h1 {
+    font-weight: bold;
+}
+
+.card {
+    margin-top: 40px;
+    margin-bottom: 100px;
+    box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.card-text {
+    padding: 80px 100px;
+    @media screen and (max-width: 768px) {
+        padding: 30px;
+    }
+}
+
+.card-detail {
+    width: 1400px;
+}
+
+.search-section {
+    background: rgb(2,0,36);
+    background: linear-gradient(180deg, rgba(2,0,36,1) 0%, rgba(9,9,121,1) 0%, rgba(0,212,255,1) 100%);
+    height: 500px;
+    color: #FFF;
+    input {
+        padding: 25px;
+        max-width: 600px;
+        box-shadow: 4px 4px 4px 4px rgba(0, 0, 0, 0.1);
+        @media screen and (max-width: 768px) {
+            max-width: 300px;
+        }
+    }
+    h1 {
+        font-weight: lighter;
+        font-size: 60px;
+        padding-bottom: 10px;
+        @media screen and (max-width: 768px) {
+            max-width: 300px;
+            font-size: 40px;
+        }
+    }
+}
+
+.ui-autocomplete.ui-widget {
+    font-family: Verdana,Arial,sans-serif;
+    font-size: 1.4rem;
+    line-height: 2rem;
+}
+
+.footer-bg {
+    background-color: #dfdfdf;
+}
+
+footer .container {
+    padding: 60px 20px;
+    max-width: 1420px !important;
+    .footer__heading {
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    a {
+        color: #212529;
+        line-height: 2rem;
+    }
+}
+
+.navbar-content .container {
+    max-width: 1460px !important;
+}
