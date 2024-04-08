@@ -23,4 +23,5 @@ This is a Laravel application designed to parse data about cities and store it i
 1. To import city data into the database, run the following command: `php artisan data:import`
 2. To import geolocation data for cities, run the following command: `php artisan data:geolocation`
 3. Once the data is imported, start the development server: `php artisan serve`
-4. Access the application in your web browser at http://127.0.0.1:8000/search.
+4. Compile the frontend assets using npm: `npm run dev` or for prod `npm run build` 
+5. Access the application in your web browser at http://127.0.0.1:8000/search.
