@@ -19,8 +19,9 @@ class ApiSearchController extends Controller
     public function search(Request $request): JsonResponse
     {
         $data = CityDetail::query()
-            ->select('id', 'name')
+            ->select('id', 'name', 'address', 'imagePath')
             ->where('name', 'LIKE', '%' . $request->get('query') . '%')
+            ->limit(10)
             ->get();
 
         return response()->json($data);

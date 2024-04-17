@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Sunra\PhpSimple\HtmlDomParser;
+use Illuminate\Support\Facades\Log;
+
 
 class ImportCityData extends Command
 {
@@ -26,63 +28,120 @@ class ImportCityData extends Command
      */
     protected $description = 'Parse websites and import data into DB';
 
-    protected const URL = 'https://www.e-obce.sk/kraj/NR.html';
+    protected const BASE_URL = 'https://www.e-obce.sk/kraj/';
 
-    /**
-     * Execute the console command.
-     * @throws Exception
-     */
+    protected const REGIONS = ['BB', 'BA', 'KE', 'NR', 'PO', 'TN', 'TT', 'ZA'];
+
+
     public function handle(): void
     {
-        $url = self::URL;
-        $html = HtmlDomParser::file_get_html($url);
+        $this->info('Parsing city detail command started...');
+        $this->info('Errors can be found in Log file.');
+        $urls = $this->generateUrls(self::REGIONS);
 
+        $allCityUrls = [];
+        foreach ($urls as $index => $url) {
+            $allCityUrls = array_merge($allCityUrls, $this->getCityUrls($url, $index));
+        }
+
+        $totalCount = count($allCityUrls);
+        $cityProgressBar = $this->output->createProgressBar($totalCount);
+        foreach ($allCityUrls as $index => $cityUrl) {
+            $cityProgressBar->advance();
+            $cityData = $this->fetchCityData($cityUrl);
+            $this->saveCityData($cityData);
+        }
+        $cityProgressBar->finish();
+    }
+
+    private function generateUrls(array $regions): array
+    {
+        $urls = [];
+        foreach ($regions as $region) {
+            $urls[] = self::BASE_URL . $region . '.html';
+        }
+        return $urls;
+    }
+
+    private function getCityUrls(string $url, $index): array
+    {
+        $this->info('Getting urls for parsing...' . '[' . ($index + 1) . ' of ' . count(self::REGIONS) . ']');
+        $html = HtmlDomParser::file_get_html($url);
         $citiesData = [];
-        $this->info('Starting parsing website...');
         foreach ($html->find('div.okres a') as $municipality) {
             $municipalityUrl = $municipality->href;
             $citiesData[] = $this->importMunicipalityData($municipalityUrl);
         }
-
-        $cityUrls = array_merge(...$citiesData);
-        $this->info('I have ' . count($cityUrls) . ' detail urls for parsing...');
-        foreach ($cityUrls as $index => $cityUrl) {
-            $this->info('Processing city detail number ' . $index . '.');
-            $cityData = $this->fetchCityData($cityUrl);
-            $this->saveCityData($cityData);
-        }
-
-        $this->info('City data imported successfully!');
+        return array_merge(...$citiesData);
     }
 
-    function importMunicipalityData($municipalityUrl): array
+    private function importMunicipalityData($municipalityUrl): array
     {
-        $response = Http::get($municipalityUrl);
-        $html = HtmlDomParser::str_get_html($response->body());
-
+        $maxRetries = 3;
+        $retryCount = 0;
+        $success = false;
         $cityData = [];
-        foreach ($html->find('table[cellspacing="3"]') as $row) {
-            $cityData = [];
-            foreach ($row->find('a') as $column) {
-                if ($column->href !== '#') {
-                    $cityData[] = $column->href;
+
+        while (!$success && $retryCount < $maxRetries) {
+            try {
+                $response = Http::get($municipalityUrl);
+                $html = HtmlDomParser::str_get_html($response->body());
+
+                foreach ($html->find('table[cellspacing="3"]') as $row) {
+                    foreach ($row->find('a') as $column) {
+                        if ($column->href !== '#') {
+                            $cityData[] = $column->href;
+                        }
+                    }
+                }
+
+                $success = true;
+            } catch (RequestException $e) {
+                $retryCount++;
+                if ($retryCount < $maxRetries) {
+                    Log::channel('city_details')->info('Failed to fetch data. Retrying after 5 seconds...');
+                    sleep(5);
+                } else {
+                    Log::channel('city_details')->error('Failed to fetch data after multiple attempts: ' . $e->getMessage());
                 }
             }
         }
+
         return $cityData;
     }
 
-    function fetchCityData($cityUrl): array
+    private function fetchCityData($cityUrl): array
     {
         if (!Storage::disk('public')->exists('images')) {
             Storage::disk('public')->makeDirectory('images');
         }
 
-        try {
-            $response = Http::timeout(30)->get($cityUrl);
-        } catch (\Exception $e) {
-            $this->error($e->getMessage());
-            return [];
+        $maxRetries = 3;
+        $retryCount = 0;
+        $success = false;
+        $responseData = null;
+
+        while (!$success && $retryCount < $maxRetries) {
+            try {
+                $response = Http::timeout(15)->get($cityUrl);
+                if ($response->successful()) {
+                    $success = true;
+                    $responseData = $response->json();
+                } else {
+                    $statusCode = $response->status();
+                    Log::channel('city_details')->error("Request failed with status code: $statusCode");
+                    break;
+                }
+            } catch (\Exception $e) {
+                $retryCount++;
+                if ($retryCount < $maxRetries) {
+                    Log::channel('city_details')->info('Something went wrong, waiting 5 sec for another request...');
+                    sleep(5);
+                } else {
+                    Log::channel('city_details')->error($e->getMessage());
+                    break;
+                }
+            }
         }
 
         $html = HtmlDomParser::str_get_html($response->body());
@@ -100,20 +159,6 @@ class ImportCityData extends Command
 
         $cityName = trim($html->find('h1', 0)->plaintext);
         $cityData['name'] = trim(preg_replace('/\b(Obec|Mesto)\b/i', '', $cityName));
-
-        foreach ($html->find('img[alt*=Erb]') as $img) {
-            $src = $img->src;
-            $cityName = preg_replace('/\([^)]*\)/', '', $cityData['name']);
-            $citySlug = Str::slug($cityName);
-            $imageContent = file_get_contents($src);
-            if ($imageContent !== false) {
-                $filename = $citySlug . '.jpg';
-                Storage::disk('public')->put('images/' . $filename, $imageContent);
-                $cityData['imagePath'] = 'images/' . $filename;
-            } else {
-                $cityData['imagePath'] = null;
-            }
-        }
 
         foreach ($html->find('table[cellspacing="3"]') as $table) {
             $rows = $table->find('tr');
@@ -137,6 +182,10 @@ class ImportCityData extends Command
 
                     if ($label === 'Starosta:') {
                         $cityData['mayor_name'] = $value;
+                    }
+
+                    if ($label === 'Okres:') {
+                        $district = $value;
                     }
 
                 } elseif (count($cells) >= 3) {
@@ -169,18 +218,61 @@ class ImportCityData extends Command
                 }
             }
         }
+
+        foreach ($html->find('img[alt*=Erb]') as $img) {
+            $src = $img->src;
+            $cityName = preg_replace('/\([^)]*\)/', '', $cityData['name']);
+            $citySlug = Str::slug($cityName) . '_' . Str::slug($district);
+        
+            $imageContent = $this->retryWithTimeout(function () use ($src) {
+                return file_get_contents($src);
+            });
+        
+            if ($imageContent !== false) {
+                $filename = $citySlug . '.jpg';
+                Storage::disk('public')->put('images/' . $filename, $imageContent);
+                $cityData['imagePath'] = 'images/' . $filename;
+            } else {
+                $cityData['imagePath'] = null;
+            }
+        }
         return $cityData;
+    }
+
+    private function retryWithTimeout(callable $callback, int $maxRetries = 3, int $timeout = 15)
+    {
+        $retryCount = 0;
+        while ($retryCount < $maxRetries) {
+            try {
+                return $callback();
+            } catch (\Exception $e) {
+                $retryCount++;
+                if ($retryCount < $maxRetries) {
+                    Log::channel('city_details')->info('Retrying fetching image content after timeout...');
+                    sleep($timeout);
+                } else {
+                    Log::channel('city_details')->info('Failed to fetch image content: ' . $e->getMessage());
+                    return false;
+                }
+            }
+        }
     }
 
     protected function saveCityData($cityData): void
     {
-        $existingCity = CityDetail::where('name', $cityData['name'])->first();
+        if ($cityData === null) {
+            return;
+        }
+
+        $existingCity = CityDetail::where('address', $cityData['address'])
+            ->where('name', $cityData['name'])
+            ->first();
 
         if (!$existingCity) {
             CityDetail::create($cityData);
-            $this->info('City "' . $cityData['name'] . '" saved.');
+            Log::channel('city_details')->info('City "' . $cityData['name'] . '" saved.');
         } else {
-            $this->info('City "' . $cityData['name'] . '" already exists, skipping.');
+            Log::channel('city_details')->info('City "' . $cityData['name'] . '" already exists, skipping.');
         }
     }
 }

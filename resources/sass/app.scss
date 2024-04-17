@@ -69,3 +69,45 @@ footer .container {
 .navbar-content .container {
     max-width: 1460px !important;
 }
+
+.ui-autocomplete-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    small {
+        font-size: 0.8rem;
+    
+    }
+}
+
+.ui-autocomplete-row img {
+    background-color: transparent;
+    width: 50px;
+    height: auto;
+    &:hover {
+        background-color: transparent;
+        border: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .ui-autocomplete-row img {
+        width: 30px;
+    }
+}
+
+.ui-autocomplete-row:hover {
+    background-color: #f0f0f0; 
+}
+
+.ui-state-active {
+    background: transparent !important;
+    border: none !important;
+    margin: 0 !important;
+    color: #000 !important;
+}
+
+.ui-menu .ui-menu-item-wrapper {
+    padding: 5px 10px !important;
+}
+

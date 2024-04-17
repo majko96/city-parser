@@ -127,6 +127,11 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        'city_details' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/city_details_import.log'),
+            'level' => 'info',
+        ],
     ],
 
 ];
